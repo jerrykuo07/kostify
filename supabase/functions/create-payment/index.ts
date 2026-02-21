@@ -30,13 +30,13 @@ serve(async (req) => {
     // ── Inisialisasi Supabase (pakai service_role agar bisa bypass RLS) ──
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      Deno.env.get("SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
     // ── Ambil data rental + tenant + room ───────────────────────────────
     const { data: rental, error: rentalError } = await supabase
       .from("rentals")
-      .select("*, profiles(full_name, email:id, phone), rooms(room_number, price_monthly)")
+      .select("*, rooms(room_number, price_monthly)")
       .eq("id", rental_id)
       .single();
 
@@ -93,9 +93,9 @@ serve(async (req) => {
         gross_amount: totalAmount,
       },
       customer_details: {
-        first_name: rental.profiles?.full_name ?? "Penyewa",
+        first_name: "Penyewa",
         email:      userEmail,
-        phone:      rental.profiles?.phone ?? "",
+        phone:      "",
       },
       item_details: [
         {
