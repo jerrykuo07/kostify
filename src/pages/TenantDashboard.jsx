@@ -222,7 +222,9 @@ function PayModal({rental,onClose,onSuccess}){
   const pay=async()=>{
     setL(true);setE("")
     try{
-      const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,"apikey":import.meta.env.VITE_SUPABASE_ANON_KEY},body:JSON.stringify({rental_id:rental.id,months_paid:months})})
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY
+      const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`,"apikey":import.meta.env.VITE_SUPABASE_ANON_KEY},body:JSON.stringify({rental_id:rental.id,months_paid:months})})
       const d=await res.json(); if(!d.success||!d.snap_token) throw new Error(d.error??"Gagal")
       if(!window.snap) throw new Error("Midtrans belum dimuat. Cek VITE_MIDTRANS_CLIENT_KEY")
       window.snap.pay(d.snap_token,{onSuccess:()=>onSuccess(),onPending:()=>{setE("Selesaikan pembayaran.");setL(false)},onError:()=>{setE("Gagal, coba lagi.");setL(false)},onClose:()=>setL(false)})
