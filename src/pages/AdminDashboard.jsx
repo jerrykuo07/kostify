@@ -115,7 +115,12 @@ export default function AdminDashboard({ profile, onBack, onSignOut }) {
   }
 
   const toggleRoomStatus = async (room) => {
-    const next = room.status === 'maintenance' ? 'available' : 'maintenance'
+    // Kalau maintenance -> cek apakah ada tenant aktif di kamar ini
+    // Kalau ada tenant -> occupied, kalau tidak -> available
+    const hasActiveTenant = rentals.some(r => r.room_id === room.id && r.status === 'active')
+    const next = room.status === 'maintenance' 
+      ? (hasActiveTenant ? 'occupied' : 'available')
+      : 'maintenance'
     await supabase.from('rooms').update({ status: next }).eq('id', room.id)
     await loadAll()
   }
