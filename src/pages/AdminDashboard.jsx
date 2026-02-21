@@ -44,11 +44,24 @@ export default function AdminDashboard({ profile, onBack, onSignOut }) {
     const [r1, r2, r3] = await Promise.all([
       supabase.from('rooms').select('*').order('room_number'),
       supabase.from('rentals').select('*, profiles(full_name,phone), rooms(room_number)').order('created_at',{ascending:false}).limit(30),
-      supabase.from('booking_requests').select('*, profiles(full_name,phone,id), rooms(room_number,type,floor,price_monthly)').order('created_at',{ascending:false}),
+      supabase.from('booking_requests').select('*, rooms(room_number,type,floor,price_monthly)').order('created_at',{ascending:false}),
     ])
     const roomData    = r1.data ?? []
     const rentalData  = r2.data ?? []
-    const bookingData = r3.data ?? []
+    const bookingRaw  = r3.data ?? []
+    if (r3.error) console.error('booking_requests error:', r3.error)
+
+    // Ambil profil tenant secara terpisah
+    let bookingData = bookingRaw
+    if (bookingRaw.length > 0) {
+      const tenantIds = [...new Set(bookingRaw.map(b => b.tenant_id))]
+      const { data: profilesData, error: pe } = await supabase
+        .from('profiles').select('id,full_name,phone').in('id', tenantIds)
+      if (pe) console.error('profiles error:', pe)
+      const profileMap = {}
+      ;(profilesData ?? []).forEach(p => { profileMap[p.id] = p })
+      bookingData = bookingRaw.map(b => ({ ...b, profiles: profileMap[b.tenant_id] ?? null }))
+    }
     setRooms(roomData); setRentals(rentalData); setBookings(bookingData)
 
     // Calc stats
