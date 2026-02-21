@@ -50,6 +50,7 @@ export default function TenantDashboard({ profile, onBack, onSignOut }) {
   }
 
   const isActive = rental?.status==="active" && new Date(rental?.expiry_date)>=new Date()
+  const needsPayment = rental?.status==="pending_payment"
   const daysLeft = rental ? Math.ceil((new Date(rental.expiry_date)-new Date())/86400000) : 0
   const urgent   = isActive && daysLeft<=7
   const pending  = bookings.find(b=>b.status==="pending")
@@ -76,7 +77,7 @@ export default function TenantDashboard({ profile, onBack, onSignOut }) {
         <AnimatePresence>
           {urgent&&<motion.div initial={{opacity:0,y:-10}} animate={{opacity:1,y:0}} exit={{opacity:0}} className="flex items-center gap-3 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 mb-4"><Bell size={17} className="text-amber-400 animate-pulse"/><div className="flex-1"><p className="text-amber-300 font-semibold text-sm">Sewa berakhir {daysLeft} hari lagi!</p><p className="text-amber-400/50 text-xs">Segera perpanjang</p></div><button onClick={()=>setShowPay(true)} className="px-3 py-1.5 rounded-lg bg-amber-400 text-black text-xs font-bold">Perpanjang</button></motion.div>}
           {pending&&!rental&&<motion.div initial={{opacity:0,y:-10}} animate={{opacity:1,y:0}} exit={{opacity:0}} className="flex items-center gap-3 p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/25 mb-4"><ClipboardList size={17} className="text-indigo-400"/><div className="flex-1"><p className="text-indigo-300 font-semibold text-sm">Permintaan sedang diproses</p><p className="text-indigo-400/50 text-xs">Kamar {pending.rooms?.room_number} · Menunggu approval</p></div><button onClick={()=>setTab("booking")} className="text-indigo-400 text-xs underline">Lihat</button></motion.div>}
-          {approved&&!rental&&<motion.div initial={{opacity:0,y:-10}} animate={{opacity:1,y:0}} exit={{opacity:0}} className="flex items-center gap-3 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 mb-4"><CheckCircle size={17} className="text-emerald-400"/><div className="flex-1"><p className="text-emerald-300 font-semibold text-sm">Disetujui! Silakan bayar</p><p className="text-emerald-400/50 text-xs">Kamar {approved.rooms?.room_number}</p></div><button onClick={()=>setShowPay(true)} className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold">Bayar</button></motion.div>}
+          {(approved&&!rental||needsPayment)&&<motion.div initial={{opacity:0,y:-10}} animate={{opacity:1,y:0}} exit={{opacity:0}} className="flex items-center gap-3 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 mb-4"><CheckCircle size={17} className="text-emerald-400"/><div className="flex-1"><p className="text-emerald-300 font-semibold text-sm">Disetujui! Silakan bayar</p><p className="text-emerald-400/50 text-xs">Kamar {approved.rooms?.room_number}</p></div><button onClick={()=>setShowPay(true)} className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold">Bayar</button></motion.div>}
         </AnimatePresence>
 
         <div className="flex gap-1 p-1 bg-white/5 border border-white/8 rounded-2xl mb-5 overflow-x-auto">
@@ -157,6 +158,7 @@ export default function TenantDashboard({ profile, onBack, onSignOut }) {
           <motion.div initial={{opacity:0,y:16}} animate={{opacity:1,y:0}}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-white font-semibold">Riwayat Pemesanan</h3>
+              {needsPayment&&<button onClick={()=>setShowPay(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-bold transition-all">💳 Bayar Sekarang</button>}
               {!rental&&!pending&&<button onClick={()=>setShowBook(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-bold transition-all"><PlusCircle size={13}/> Pesan Kamar</button>}
             </div>
             {bookings.length===0?(
