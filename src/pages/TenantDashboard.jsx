@@ -10,7 +10,7 @@ import {
   ArrowLeft, LogOut, Bell, CheckCircle, AlertCircle,
   Wifi, Zap, Droplets, Star, Receipt, Minus, Plus, X,
   User, ClipboardList, PlusCircle, Edit3, Lock, Eye, EyeOff, Save,
-  Sun, Moon
+  Sun, Moon, Maximize2
 } from 'lucide-react'
 
 const SERIF  = 'Georgia,serif'
@@ -30,8 +30,19 @@ export default function TenantDashboard({ profile: initProfile, onBack, onSignOu
   const [showPay, setShowPay]   = useState(null) // rental object
   const [showBook, setShowBook] = useState(false)
 
+  const [qrFullscreen, setQrFullscreen] = useState(null)
+
+  // Derived: all active rentals
+  const activeRentals = rentals.filter(r => r.status==='active' && new Date(r.expiry_date)>=new Date())
+
   // Profile edit state
-  const [profileForm, setProfileForm] = useState({ full_name: initProfile?.full_name||'', phone: initProfile?.phone||'' })
+  const [profileForm, setProfileForm] = useState({
+    full_name: initProfile?.full_name||'',
+    phone:     initProfile?.phone||'',
+    ktp_number: initProfile?.ktp_number||'',
+    occupation: initProfile?.occupation||'',
+    new_email:  '',
+  })
   const [pwdForm, setPwdForm]         = useState({ new:'', confirm:'' })
   const [showPwd, setShowPwd]         = useState(false)
   const [savingProfile, setSavingProfile] = useState(false)
@@ -69,16 +80,30 @@ export default function TenantDashboard({ profile: initProfile, onBack, onSignOu
   }
 
   // Active rental = first active one
-  const activeRental = rentals.find(r => r.status==='active' && new Date(r.expiry_date)>=new Date())
+  const activeRental = rentals.find(r => r.status==='active' && new Date(r.expiry_date)>=new Date()) // first active rental
   const pendingPayRental = rentals.find(r => r.status==='pending_payment')
   const pendingBooking = bookings.find(b => b.status==='pending')
   const approvedBooking = bookings.find(b => b.status==='approved')
 
   const saveProfile = async () => {
     setSavingProfile(true); setProfileMsg('')
-    const { error } = await supabase.from('profiles').update({ full_name:profileForm.full_name, phone:profileForm.phone }).eq('id', profile.id)
+    const updates = { full_name:profileForm.full_name, phone:profileForm.phone, ktp_number:profileForm.ktp_number, occupation:profileForm.occupation }
+    const { error } = await supabase.from('profiles').update(updates).eq('id', profile.id)
     if (error) setProfileMsg('❌ '+error.message)
-    else { setProfileMsg('✅ Profil berhasil diperbarui!'); setProfile(p=>({...p,...profileForm})) }
+    else { setProfileMsg('✅ Profil berhasil diperbarui!'); setProfile(p=>({...p,...updates})) }
+    setSavingProfile(false)
+  }
+
+  const changeEmail = async () => {
+    const email = profileForm.new_email.trim()
+    if (!email || !email.includes('@')) { setProfileMsg('❌ Email tidak valid'); return }
+    setSavingProfile(true); setProfileMsg('')
+    const { error } = await supabase.auth.updateUser({ email })
+    if (error) setProfileMsg('❌ '+error.message)
+    else {
+      setProfileMsg('✅ Email verifikasi dikirim ke '+email+'. Silakan cek inbox lalu login ulang.')
+      setTimeout(async () => { await supabase.auth.signOut(); onSignOut() }, 3000)
+    }
     setSavingProfile(false)
   }
 
@@ -87,8 +112,9 @@ export default function TenantDashboard({ profile: initProfile, onBack, onSignOu
     if (pwdForm.new.length < 6) { setPwdMsg('❌ Min. 6 karakter'); return }
     setSavingPwd(true); setPwdMsg('')
     const { error } = await supabase.auth.updateUser({ password: pwdForm.new })
-    if (error) setPwdMsg('❌ '+error.message)
-    else { setPwdMsg('✅ Password berhasil diubah!'); setPwdForm({new:'',confirm:''}) }
+    if (error) { setPwdMsg('❌ '+error.message); setSavingPwd(false); return }
+    setPwdMsg('✅ Password berhasil diubah! Silakan login ulang...')
+    setTimeout(async () => { await supabase.auth.signOut(); onSignOut() }, 2000)
     setSavingPwd(false)
   }
 
@@ -148,7 +174,7 @@ export default function TenantDashboard({ profile: initProfile, onBack, onSignOu
             <motion.div initial={{opacity:0,y:-10}} animate={{opacity:1,y:0}} exit={{opacity:0}} className="flex items-center gap-3 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 mb-4">
               <CheckCircle size={17} className="text-emerald-400"/>
               <div className="flex-1"><p className="text-emerald-300 font-semibold text-sm">Disetujui! Silakan bayar</p><p className="text-emerald-400/50 text-xs">Kamar {approvedBooking?.rooms?.room_number}</p></div>
-              <button onClick={()=>setShowPay(pendingPayRental||activeRental)} className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold">Bayar</button>
+              <button onClick={()=>setShowPay({rental:pendingPayRental||activeRental,months:approvedBooking?.duration_months||1})} className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold">Bayar</button>
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -247,26 +273,50 @@ export default function TenantDashboard({ profile: initProfile, onBack, onSignOu
 
         {/* ══ QR ══ */}
         {tab==='qr' && (
-          <motion.div initial={{opacity:0,scale:.97}} animate={{opacity:1,scale:1}} className="max-w-sm mx-auto">
-            <div className={`p-7 rounded-3xl border ${crd} text-center`}>
-              {activeRental ? (
-                <>
-                  <div className="flex items-center justify-center gap-2 mb-5"><div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"/><span className="text-emerald-400 text-sm font-semibold">Token Aktif</span></div>
-                  <div className="relative inline-block mb-5"><div className="absolute -inset-3 rounded-3xl bg-amber-400/10 blur-xl"/><div className="relative p-5 rounded-3xl bg-white shadow-2xl"><QRCodeSVG value={activeRental.access_token} size={190} bgColor="#fff" fgColor="#0f0f1a" level="H"/></div></div>
-                  <p style={{fontFamily:SERIF}} className={`${txt} font-semibold text-lg mb-0.5`}>Kamar {activeRental.rooms?.room_number}</p>
-                  <p className={`${sub} text-sm mb-5`}>Berlaku hingga {fmtD(activeRental.expiry_date)}</p>
-                  <div className="flex items-center justify-center gap-2 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20"><Shield size={13} className="text-emerald-400"/><p className="text-emerald-400 text-xs font-medium">Scan di pintu. Rahasiakan QR ini.</p></div>
-                </>
-              ) : (
-                <div className="py-8">
-                  <div className={`w-16 h-16 rounded-2xl border flex items-center justify-center mx-auto mb-4 ${crd}`}><QrCode size={28} className={sub}/></div>
-                  <p className={`${txt} font-semibold mb-1.5`}>QR Tidak Aktif</p>
-                  <p className={`${sub} text-sm mb-5`}>Belum ada sewa aktif</p>
-                </div>
-              )}
-            </div>
+          <motion.div initial={{opacity:0,scale:.97}} animate={{opacity:1,scale:1}}>
+            {activeRentals.length === 0 ? (
+              <div className={`max-w-sm mx-auto p-7 rounded-3xl border ${crd} text-center`}>
+                <div className={`w-16 h-16 rounded-2xl border flex items-center justify-center mx-auto mb-4 ${crd}`}><QrCode size={28} className={sub}/></div>
+                <p className={`${txt} font-semibold mb-1.5`}>QR Tidak Aktif</p>
+                <p className={`${sub} text-sm`}>Belum ada sewa aktif</p>
+              </div>
+            ) : (
+              <div className={`grid gap-4 ${activeRentals.length > 1 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 max-w-sm mx-auto'}`}>
+                {activeRentals.map(r => (
+                  <div key={r.id} className={`p-6 rounded-3xl border ${crd} text-center`}>
+                    <div className="flex items-center justify-center gap-2 mb-4"><div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"/><span className="text-emerald-400 text-sm font-semibold">Token Aktif</span></div>
+                    <button onClick={()=>setQrFullscreen(r)} className="relative inline-block mb-4 cursor-pointer hover:scale-105 transition-transform" title="Klik untuk fullscreen">
+                      <div className="absolute -inset-2 rounded-2xl bg-amber-400/10 blur-xl"/>
+                      <div className="relative p-4 rounded-2xl bg-white shadow-xl"><QRCodeSVG value={r.access_token} size={160} bgColor="#fff" fgColor="#0f0f1a" level="H"/></div>
+                      <div className="absolute bottom-2 right-2 w-6 h-6 bg-black/40 rounded-md flex items-center justify-center"><Maximize2 size={11} className="text-white"/></div>
+                    </button>
+                    <p style={{fontFamily:SERIF}} className={`${txt} font-semibold text-base mb-0.5`}>Kamar {r.rooms?.room_number}</p>
+                    <p className={`${sub} text-xs mb-4`}>Berlaku hingga {fmtD(r.expiry_date)}</p>
+                    <div className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20"><Shield size={12} className="text-emerald-400"/><p className="text-emerald-400 text-xs">Rahasiakan QR ini.</p></div>
+                  </div>
+                ))}
+              </div>
+            )}
           </motion.div>
         )}
+
+        {/* QR Fullscreen Modal */}
+        <AnimatePresence>
+          {qrFullscreen && (
+            <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-xl p-4"
+              onClick={()=>setQrFullscreen(null)}>
+              <motion.div initial={{scale:.8}} animate={{scale:1}} exit={{scale:.8}} className="text-center" onClick={e=>e.stopPropagation()}>
+                <div className="p-6 rounded-3xl bg-white shadow-2xl mb-4 inline-block">
+                  <QRCodeSVG value={qrFullscreen.access_token} size={280} bgColor="#fff" fgColor="#0f0f1a" level="H"/>
+                </div>
+                <p style={{fontFamily:SERIF}} className="text-white font-bold text-xl mb-1">Kamar {qrFullscreen.rooms?.room_number}</p>
+                <p className="text-white/40 text-sm mb-4">Berlaku hingga {fmtD(qrFullscreen.expiry_date)}</p>
+                <button onClick={()=>setQrFullscreen(null)} className="px-6 py-2.5 rounded-xl bg-white/10 border border-white/20 text-white text-sm hover:bg-white/20">Tutup</button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ══ BOOKING ══ */}
         {tab==='booking' && (
@@ -302,7 +352,7 @@ export default function TenantDashboard({ profile: initProfile, onBack, onSignOu
                         </div>
                       )}
                       {b.admin_notes && <div className={`p-3 rounded-xl text-xs mb-3 ${b.status==='approved'?'bg-emerald-500/10 text-emerald-300':b.status==='rejected'?'bg-red-500/10 text-red-300':'bg-white/5 text-white/40'}`}><p className="font-semibold mb-0.5">Catatan Admin:</p><p>{b.admin_notes}</p></div>}
-                      {b.status==='approved' && !relRental && <button onClick={()=>setShowPay(pendingPayRental)} className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs flex items-center justify-center gap-1.5"><CreditCard size={13}/> Bayar untuk Aktivasi Kamar</button>}
+                      {b.status==='approved' && !relRental && <button onClick={()=>setShowPay({rental:pendingPayRental,months:b.duration_months||1})} className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs flex items-center justify-center gap-1.5"><CreditCard size={13}/> Bayar untuk Aktivasi Kamar</button>}
                       <p className={`${sub} text-xs mt-2 opacity-50`}>Diajukan {fmtD(b.created_at)}</p>
                     </motion.div>
                   )
@@ -336,22 +386,38 @@ export default function TenantDashboard({ profile: initProfile, onBack, onSignOu
         {/* ══ PROFILE ══ */}
         {tab==='profile' && (
           <motion.div initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} className="max-w-lg space-y-4">
+            {/* Info pribadi */}
             <div className={`p-6 rounded-3xl border ${crd}`}>
               <div className="flex items-center gap-2 mb-5"><Edit3 size={16} className="text-amber-400"/><h3 className={`${txt} font-semibold`}>Informasi Saya</h3></div>
               <div className="space-y-3">
-                <div><label className={`${sub} text-xs mb-1 block`}>Nama Lengkap</label><input className={`w-full px-4 py-3 rounded-xl border text-sm focus:outline-none focus:border-amber-400/50 transition-all ${inp}`} value={profileForm.full_name} onChange={e=>setProfileForm(f=>({...f,full_name:e.target.value}))}/></div>
-                <div><label className={`${sub} text-xs mb-1 block`}>No. Telepon</label><input className={`w-full px-4 py-3 rounded-xl border text-sm focus:outline-none focus:border-amber-400/50 transition-all ${inp}`} value={profileForm.phone} onChange={e=>setProfileForm(f=>({...f,phone:e.target.value}))}/></div>
+                <div><label className={`${sub} text-xs mb-1 block`}>Nama Lengkap</label><input className={`w-full px-4 py-3 rounded-xl border text-sm focus:outline-none focus:border-amber-400/50 ${inp}`} value={profileForm.full_name} onChange={e=>setProfileForm(f=>({...f,full_name:e.target.value}))}/></div>
+                <div><label className={`${sub} text-xs mb-1 block`}>No. Telepon</label><input className={`w-full px-4 py-3 rounded-xl border text-sm focus:outline-none focus:border-amber-400/50 ${inp}`} value={profileForm.phone} onChange={e=>setProfileForm(f=>({...f,phone:e.target.value}))}/></div>
+                <div><label className={`${sub} text-xs mb-1 block`}>No. KTP</label><input className={`w-full px-4 py-3 rounded-xl border text-sm focus:outline-none focus:border-amber-400/50 ${inp}`} value={profileForm.ktp_number} onChange={e=>setProfileForm(f=>({...f,ktp_number:e.target.value}))} placeholder="16 digit NIK"/></div>
+                <div><label className={`${sub} text-xs mb-1 block`}>Pekerjaan</label><input className={`w-full px-4 py-3 rounded-xl border text-sm focus:outline-none focus:border-amber-400/50 ${inp}`} value={profileForm.occupation} onChange={e=>setProfileForm(f=>({...f,occupation:e.target.value}))} placeholder="cth: Karyawan, Mahasiswa"/></div>
               </div>
               {profileMsg && <p className="text-sm mt-3">{profileMsg}</p>}
               <button onClick={saveProfile} disabled={savingProfile} className="mt-4 w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
                 <Save size={14}/>{savingProfile?'Menyimpan...':'Simpan Perubahan'}
               </button>
             </div>
+
+            {/* Ganti Email */}
             <div className={`p-6 rounded-3xl border ${crd}`}>
-              <div className="flex items-center gap-2 mb-5"><Lock size={16} className="text-amber-400"/><h3 className={`${txt} font-semibold`}>Ganti Password</h3></div>
+              <div className="flex items-center gap-2 mb-2"><User size={16} className="text-amber-400"/><h3 className={`${txt} font-semibold`}>Ganti Email</h3></div>
+              <p className={`${sub} text-xs mb-4`}>Email verifikasi akan dikirim. Setelah konfirmasi, akun akan otomatis logout.</p>
+              <div><label className={`${sub} text-xs mb-1 block`}>Email Baru</label><input className={`w-full px-4 py-3 rounded-xl border text-sm focus:outline-none focus:border-amber-400/50 ${inp}`} type="email" value={profileForm.new_email} onChange={e=>setProfileForm(f=>({...f,new_email:e.target.value}))} placeholder="email@baru.com"/></div>
+              <button onClick={changeEmail} disabled={savingProfile||!profileForm.new_email} className="mt-3 w-full py-3 rounded-xl bg-amber-400/10 border border-amber-400/30 text-amber-400 font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2 hover:bg-amber-400/20">
+                <User size={14}/> Kirim Verifikasi Email
+              </button>
+            </div>
+
+            {/* Ganti Password */}
+            <div className={`p-6 rounded-3xl border ${crd}`}>
+              <div className="flex items-center gap-2 mb-2"><Lock size={16} className="text-amber-400"/><h3 className={`${txt} font-semibold`}>Ganti Password</h3></div>
+              <p className={`${sub} text-xs mb-4`}>Setelah berhasil, akun akan otomatis logout.</p>
               <div className="space-y-3">
-                <div className="relative"><label className={`${sub} text-xs mb-1 block`}>Password Baru</label><input className={`w-full px-4 py-3 rounded-xl border text-sm focus:outline-none focus:border-amber-400/50 transition-all ${inp}`} type={showPwd?'text':'password'} value={pwdForm.new} onChange={e=>setPwdForm(p=>({...p,new:e.target.value}))} placeholder="Min. 6 karakter"/><button onClick={()=>setShowPwd(v=>!v)} className={`absolute right-3 top-8 ${sub}`}>{showPwd?<EyeOff size={14}/>:<Eye size={14}/>}</button></div>
-                <div><label className={`${sub} text-xs mb-1 block`}>Konfirmasi Password</label><input className={`w-full px-4 py-3 rounded-xl border text-sm focus:outline-none focus:border-amber-400/50 transition-all ${inp}`} type={showPwd?'text':'password'} value={pwdForm.confirm} onChange={e=>setPwdForm(p=>({...p,confirm:e.target.value}))} placeholder="Ulangi password baru"/></div>
+                <div className="relative"><label className={`${sub} text-xs mb-1 block`}>Password Baru</label><input className={`w-full px-4 py-3 rounded-xl border text-sm focus:outline-none focus:border-amber-400/50 ${inp}`} type={showPwd?'text':'password'} value={pwdForm.new} onChange={e=>setPwdForm(p=>({...p,new:e.target.value}))} placeholder="Min. 6 karakter"/><button onClick={()=>setShowPwd(v=>!v)} className={`absolute right-3 top-8 ${sub}`}>{showPwd?<EyeOff size={14}/>:<Eye size={14}/>}</button></div>
+                <div><label className={`${sub} text-xs mb-1 block`}>Konfirmasi Password</label><input className={`w-full px-4 py-3 rounded-xl border text-sm focus:outline-none focus:border-amber-400/50 ${inp}`} type={showPwd?'text':'password'} value={pwdForm.confirm} onChange={e=>setPwdForm(p=>({...p,confirm:e.target.value}))} placeholder="Ulangi password baru"/></div>
               </div>
               {pwdMsg && <p className="text-sm mt-3">{pwdMsg}</p>}
               <button onClick={savePassword} disabled={savingPwd} className={`mt-4 w-full py-3 rounded-xl font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2 ${dark?'bg-white/10 hover:bg-white/15 text-white':'bg-gray-100 hover:bg-gray-200 text-gray-900'}`}>
@@ -363,15 +429,15 @@ export default function TenantDashboard({ profile: initProfile, onBack, onSignOu
       </main>
 
       <AnimatePresence>
-        {showPay && <PayModal rental={showPay} onClose={()=>setShowPay(null)} onSuccess={()=>{setShowPay(null);loadData()}}/>}
+        {showPay && <PayModal rental={showPay?.rental||showPay} initialMonths={showPay?.months||1} onClose={()=>setShowPay(null)} onSuccess={()=>{setShowPay(null);loadData()}}/>}
         {showBook && <BookingModal rooms={rooms} profile={profile} onClose={()=>setShowBook(false)} onSuccess={()=>{setShowBook(false);loadData();setTab('booking')}}/>}
       </AnimatePresence>
     </div>
   )
 }
 
-function PayModal({rental, onClose, onSuccess}) {
-  const [months, setM] = useState(1)
+function PayModal({rental, onClose, onSuccess, initialMonths=1}) {
+  const [months, setM] = useState(initialMonths)
   const [loading, setL] = useState(false)
   const [error, setE]   = useState('')
   const price = rental?.monthly_price ?? rental?.rooms?.price_monthly ?? 0

@@ -19,10 +19,8 @@ function AppInner() {
     try {
       const { data } = await supabase
         .from('profiles').select('*').eq('id', userId).maybeSingle()
-      return data
-    } catch {
-      return null
-    }
+      return data ?? null
+    } catch { return null }
   }
 
   useEffect(() => {
@@ -30,27 +28,40 @@ function AppInner() {
     let ready = false
 
     const markReady = () => {
-      if (!ready) { ready = true; if (mounted) setAuthReady(true) }
+      if (!ready && mounted) { ready = true; setAuthReady(true) }
     }
 
-    // Hard fallback — no matter what, show app after 4s
-    const fallback = setTimeout(markReady, 4000)
+    // Hard fallback — show app no matter what after 5s
+    const fallback = setTimeout(markReady, 5000)
 
+    // --- SHORTCUT: cek session langsung tanpa tunggu event ---
+    // Ini fix untuk hard reload (ctrl+shift+r) dimana onAuthStateChange lambat
+    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
+      if (!mounted || ready) return
+      if (!s) {
+        // Tidak ada session — langsung tampil landing
+        setSession(null); setProfile(null); setPage('home')
+        markReady()
+      } else {
+        // Ada session — load profile dan tampil dashboard
+        const p = await fetchProfile(s.user.id)
+        if (!mounted) return
+        setSession(s); setProfile(p)
+        setPage(p?.role === 'admin' ? 'admin' : 'dashboard')
+        markReady()
+      }
+    })
+
+    // --- EVENT LISTENER: handle perubahan auth state (login/logout) ---
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
       if (!mounted) return
       console.log('[App] event:', event, '| user:', s?.user?.email ?? 'none')
 
       if (event === 'INITIAL_SESSION') {
-        clearTimeout(fallback)
-        if (!s) {
-          setSession(null); setProfile(null); setPage('home')
-          markReady(); return
-        }
-        const p = await fetchProfile(s.user.id)
-        if (!mounted) return
-        setSession(s); setProfile(p)
-        setPage(p?.role === 'admin' ? 'admin' : 'dashboard')
-        markReady(); return
+        // Sudah ditangani oleh getSession() di atas
+        // Tapi tetap markReady sebagai safety net
+        markReady()
+        return
       }
 
       if (event === 'SIGNED_IN' && s) {
@@ -59,20 +70,18 @@ function AppInner() {
         if (!mounted) return
         setSession(s); setProfile(p); setShowAuth(false)
         setPage(p?.role === 'admin' ? 'admin' : 'dashboard')
-        markReady(); return
+        markReady()
+        return
       }
 
       if (event === 'SIGNED_OUT') {
         setSession(null); setProfile(null); setPage('home')
-        markReady() // ← INI FIX UTAMA: SIGNED_OUT juga set authReady
+        markReady()
+        return
       }
 
       if (event === 'TOKEN_REFRESHED' && s) {
-        // Token refreshed — pastikan profile masih ada
-        if (!profile) {
-          const p = await fetchProfile(s.user.id)
-          if (mounted) { setSession(s); setProfile(p) }
-        }
+        setSession(s)
         markReady()
       }
     })
