@@ -8,12 +8,39 @@ import TenantDashboard from './pages/TenantDashboard'
 import AdminDashboard  from './pages/AdminDashboard'
 import ScannerPage     from './pages/ScannerPage'
 
+// Baca session dari localStorage TANPA async - langsung saat module load
+function readSessionFromStorage() {
+  try {
+    // Supabase menyimpan session dengan key seperti "sb-xxx-auth-token"
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) {
+        const raw = localStorage.getItem(key)
+        if (!raw) continue
+        const parsed = JSON.parse(raw)
+        const session = parsed?.session ?? parsed
+        if (session?.user && session?.access_token) {
+          // Cek belum expired
+          const exp = session.expires_at ?? session.user?.exp
+          if (exp && Date.now() / 1000 > exp) return null
+          return session
+        }
+      }
+    }
+  } catch { /* ignore */ }
+  return null
+}
+
 function AppInner() {
-  const [session, setSession]     = useState(null)
+  // Baca session dari localStorage SYNCHRONOUSLY sebagai initial state
+  // Ini yang membuat app tidak perlu tunggu async sama sekali
+  const [cachedSession] = useState(() => readSessionFromStorage())
+  const [session, setSession]     = useState(cachedSession)
   const [profile, setProfile]     = useState(null)
   const [page, setPage]           = useState('home')
   const [showAuth, setShowAuth]   = useState(false)
-  const [authReady, setAuthReady] = useState(false)
+  // Kalau ada cached session, langsung authReady = true (tidak perlu loading)
+  const [authReady, setAuthReady] = useState(() => true)
 
   async function fetchProfile(userId) {
     try {
@@ -23,70 +50,59 @@ function AppInner() {
     } catch { return null }
   }
 
+  // Load profile dari cached session langsung — tanpa tunggu Supabase event
+  useEffect(() => {
+    if (cachedSession?.user?.id) {
+      fetchProfile(cachedSession.user.id).then(p => {
+        if (p) {
+          setProfile(p)
+          setPage(p.role === 'admin' ? 'admin' : 'dashboard')
+        }
+      })
+    }
+  }, [])
+
+  // Listen perubahan auth (login/logout) — tapi TIDAK blocking
   useEffect(() => {
     let mounted = true
-    let ready = false
 
-    const markReady = () => {
-      if (!ready && mounted) { ready = true; setAuthReady(true) }
-    }
-
-    // Hard fallback — show app no matter what after 5s
-    const fallback = setTimeout(markReady, 5000)
-
-    // --- SHORTCUT: cek session langsung tanpa tunggu event ---
-    // Ini fix untuk hard reload (ctrl+shift+r) dimana onAuthStateChange lambat
-    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
-      if (!mounted || ready) return
-      if (!s) {
-        // Tidak ada session — langsung tampil landing
-        setSession(null); setProfile(null); setPage('home')
-        markReady()
-      } else {
-        // Ada session — load profile dan tampil dashboard
-        const p = await fetchProfile(s.user.id)
-        if (!mounted) return
-        setSession(s); setProfile(p)
-        setPage(p?.role === 'admin' ? 'admin' : 'dashboard')
-        markReady()
-      }
-    })
-
-    // --- EVENT LISTENER: handle perubahan auth state (login/logout) ---
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
       if (!mounted) return
       console.log('[App] event:', event, '| user:', s?.user?.email ?? 'none')
 
-      if (event === 'INITIAL_SESSION') {
-        // Sudah ditangani oleh getSession() di atas
-        // Tapi tetap markReady sebagai safety net
-        markReady()
-        return
-      }
-
       if (event === 'SIGNED_IN' && s) {
-        clearTimeout(fallback)
         const p = await fetchProfile(s.user.id)
         if (!mounted) return
         setSession(s); setProfile(p); setShowAuth(false)
         setPage(p?.role === 'admin' ? 'admin' : 'dashboard')
-        markReady()
         return
       }
 
       if (event === 'SIGNED_OUT') {
         setSession(null); setProfile(null); setPage('home')
-        markReady()
         return
       }
 
       if (event === 'TOKEN_REFRESHED' && s) {
         setSession(s)
-        markReady()
+      }
+
+      if (event === 'INITIAL_SESSION') {
+        if (!s && !cachedSession) {
+          // Benar-benar tidak ada session
+          setSession(null); setProfile(null); setPage('home')
+        }
+        // Kalau ada s tapi profile belum load
+        if (s && !profile) {
+          const p = await fetchProfile(s.user.id)
+          if (!mounted) return
+          setSession(s); setProfile(p)
+          setPage(p?.role === 'admin' ? 'admin' : 'dashboard')
+        }
       }
     })
 
-    return () => { mounted = false; clearTimeout(fallback); subscription.unsubscribe() }
+    return () => { mounted = false; subscription.unsubscribe() }
   }, [])
 
   const signOut = async () => {
@@ -94,7 +110,18 @@ function AppInner() {
     await supabase.auth.signOut()
   }
 
-  if (!authReady) return (
+  // Kalau ada session tapi profile belum loaded, tampilkan loading ringan
+  // TAPI hanya max 3 detik — setelah itu tetap tampil home
+  const [profileTimeout, setProfileTimeout] = useState(false)
+  useEffect(() => {
+    if (session && !profile) {
+      const t = setTimeout(() => setProfileTimeout(true), 3000)
+      return () => clearTimeout(t)
+    }
+  }, [session, profile])
+
+  // Tampilkan loading HANYA kalau: ada session, profile belum ada, belum timeout
+  if (session && !profile && !profileTimeout) return (
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#f9fafb'}}>
       <div style={{width:36,height:36,border:'3px solid #e5e7eb',borderTopColor:'#fbbf24',borderRadius:'50%',animation:'spin 0.7s linear infinite'}}/>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
