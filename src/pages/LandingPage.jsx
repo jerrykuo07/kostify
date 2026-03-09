@@ -4,12 +4,13 @@
 // - Sesudah login:  tombol "Dashboard" (untuk penyewa) atau "Admin Panel"
 
 import { useState, useEffect } from 'react'
+import { useTheme } from '../lib/ThemeContext.jsx'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Wifi, Wind, Droplets, Tv, Coffee, ShieldCheck,
   Star, ChevronDown, ArrowRight, Menu, X,
   MapPin, Phone, Mail, Instagram, CheckCircle,
-  Zap, Users, Key, Clock, LayoutDashboard, LogOut, User, Scan
+  Zap, Users, Key, Clock, LayoutDashboard, LogOut, User, Scan, Sun, Moon
 } from 'lucide-react'
 
 
@@ -42,6 +43,7 @@ const TESTIMONIALS = [
 ]
 
 export default function LandingPage({ session, profile, onBookNow, onGoToDashboard, onGoToAdmin, onGoToScanner, onSignOut }) {
+  const { dark, toggle } = useTheme()
   const [heroIndex, setHeroIndex] = useState(0)
   const [menuOpen, setMenuOpen]   = useState(false)
   const [scrolled, setScrolled]   = useState(false)
@@ -148,10 +150,15 @@ export default function LandingPage({ session, profile, onBookNow, onGoToDashboa
               </div>
             ) : (
               /* ── Belum login ── */
-              <button onClick={onBookNow}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-semibold text-sm transition-all shadow-lg shadow-amber-500/20 hover:scale-[1.02]">
-                Masuk / Daftar <ArrowRight size={14} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={toggle} className="p-2 rounded-lg bg-white/5 border border-white/10 text-amber-400 hover:bg-white/10 transition-all">
+                  {dark ? <Sun size={15}/> : <Moon size={15}/>}
+                </button>
+                <button onClick={onBookNow}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-semibold text-sm transition-all shadow-lg shadow-amber-500/20 hover:scale-[1.02]">
+                  Masuk / Daftar <ArrowRight size={14} />
+                </button>
+              </div>
             )}
           </motion.div>
 
