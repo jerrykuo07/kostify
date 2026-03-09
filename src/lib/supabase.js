@@ -3,10 +3,19 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl     = import.meta.env.VITE_SUPABASE_URL     || ''
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 
-// Jangan throw — biarkan app tetap render, error akan ditampilkan di UI
 export const supabase = createClient(
   supabaseUrl  || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder-key'
+  supabaseAnonKey || 'placeholder-key',
+  {
+    auth: {
+      persistSession: true,
+      storageKey: 'kostify-auth',
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+      // Nonaktifkan lock — fix untuk "Navigator LockManager timed out"
+      lock: undefined,
+    }
+  }
 )
 
 export const isConfigured = !!(supabaseUrl && supabaseAnonKey)
@@ -15,10 +24,7 @@ export const getCurrentProfile = async () => {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   const { data } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .maybeSingle()
+    .from('profiles').select('*').eq('id', user.id).maybeSingle()
   return data
 }
 
