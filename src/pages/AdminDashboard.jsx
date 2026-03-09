@@ -19,7 +19,7 @@ const ROOM_TYPES       = ['standard','deluxe','suite']
 const FACILITY_OPTIONS = ['AC','WiFi','Kamar Mandi Dalam','Balkon','TV','Mini Kitchen','Lemari','Meja Belajar','Water Heater']
 const emptyRoom = { room_number:'', floor:'', type:'standard', price_monthly:'', facilities:[], description:'' }
 
-export default function AdminDashboard({ profile: initProfile, onBack, onSignOut, onProfileLoad }) {
+export default function AdminDashboard({ profile: initProfile, onBack, onSignOut}) {
   const { dark, toggle } = useTheme()
   const [profile, setProfile] = useState(initProfile)
   const [tab, setTab]             = useState('overview')
@@ -64,20 +64,6 @@ export default function AdminDashboard({ profile: initProfile, onBack, onSignOut
   const txt  = dark ? 'text-white'     : 'text-gray-900'
   const sub  = dark ? 'text-slate-500' : 'text-gray-500'
   const inp  = dark ? 'bg-white/5 border-white/10 text-white placeholder-white/20' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
-
-  // Self-fetch profile kalau belum ada (misal setelah hard reload)
-  useEffect(() => {
-    if (!initProfile) {
-      supabase.auth.getUser().then(async ({ data: { user } }) => {
-        if (!user) return
-        const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
-        if (p) {
-          setProfile(p)
-          if (onProfileLoad) onProfileLoad(p)
-        }
-      })
-    }
-  }, [])
 
   useEffect(() => { loadAll() }, [])
 

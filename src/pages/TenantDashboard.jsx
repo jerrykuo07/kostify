@@ -18,7 +18,7 @@ const fmtIDR = n => new Intl.NumberFormat('id-ID',{style:'currency',currency:'ID
 const fmtD   = s => s ? new Date(s).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}) : '—'
 const daysLeft = d => d ? Math.ceil((new Date(d)-new Date())/86400000) : 0
 
-export default function TenantDashboard({ profile: initProfile, onBack, onSignOut, onProfileLoad }) {
+export default function TenantDashboard({ profile: initProfile, onBack, onSignOut}) {
   const { dark, toggle } = useTheme()
   const [profile, setProfile] = useState(initProfile)
   const [rentals, setRentals]   = useState([])
@@ -57,20 +57,6 @@ export default function TenantDashboard({ profile: initProfile, onBack, onSignOu
   const sub = dark ? 'text-white/40' : 'text-gray-500'
   const crd = dark ? 'bg-[#111] border-white/8' : 'bg-white border-gray-200'
   const inp = dark ? 'bg-white/5 border-white/10 text-white placeholder-white/20' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
-
-  // Self-fetch profile kalau belum ada (misal setelah hard reload)
-  useEffect(() => {
-    if (!initProfile) {
-      supabase.auth.getUser().then(async ({ data: { user } }) => {
-        if (!user) return
-        const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
-        if (p) {
-          setProfile(p)
-          if (onProfileLoad) onProfileLoad(p)
-        }
-      })
-    }
-  }, [])
 
   useEffect(() => { loadData() }, [])
   useEffect(() => {
