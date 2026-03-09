@@ -37,6 +37,7 @@ export default function AdminDashboard({ profile: initProfile, onBack, onSignOut
   const [roomSaving, setRoomSaving] = useState(false)
   const [roomError, setRoomError]   = useState('')
 
+
   // Floor manager
   const [showFloorMgr, setShowFloorMgr] = useState(false)
   const [newFloor, setNewFloor]         = useState('')
@@ -125,12 +126,25 @@ export default function AdminDashboard({ profile: initProfile, onBack, onSignOut
   }
 
   const toggleRoomStatus = async r => {
-    const hasActive = rentals.some(t => t.room_id===r.id && t.status==='active')
+    // fetch fresh rental data to check if room has active tenant
+    const { data: activeRentals } = await supabase.from('rentals').select('id').eq('room_id', r.id).eq('status','active')
+    const hasActive = (activeRentals?.length ?? 0) > 0
     const next = r.status==='maintenance' ? (hasActive?'occupied':'available') : 'maintenance'
-    await supabase.from('rooms').update({status:next}).eq('id',r.id); await loadAll()
+    const { error } = await supabase.from('rooms').update({status:next}).eq('id',r.id)
+    if (error) { alert('Gagal update status: '+error.message); return }
+    await loadAll()
   }
 
   const toggleFacility = f => setEditRoom(r => ({...r, facilities: r.facilities.includes(f)?r.facilities.filter(x=>x!==f):[...r.facilities,f]}))
+
+
+  const kickTenant = async (rental) => {
+    if (!confirm(`Keluarkan ${rental.profiles?.full_name} dari Kamar ${rental.rooms?.room_number}? Tindakan ini tidak bisa dibatalkan.`)) return
+    const { error: e1 } = await supabase.from('rentals').update({ status:'terminated' }).eq('id', rental.id)
+    if (e1) { alert('Gagal: '+e1.message); return }
+    await supabase.from('rooms').update({ status:'available' }).eq('id', rental.room_id)
+    await loadAll()
+  }
 
   // Floor manager
   const addFloor = () => {
@@ -426,7 +440,7 @@ export default function AdminDashboard({ profile: initProfile, onBack, onSignOut
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead><tr className={`border-b ${dark?'border-slate-800':'border-gray-200'}`}>
-                    {['Penyewa','Kamar','Mulai','Berakhir','Sisa','Status'].map(h=>(
+                    {['Penyewa','Kamar','Mulai','Berakhir','Sisa','Status','Aksi'].map(h=>(
                       <th key={h} className={`text-left px-5 py-4 ${sub} text-xs font-semibold uppercase tracking-wider`}>{h}</th>
                     ))}
                   </tr></thead>
@@ -436,7 +450,7 @@ export default function AdminDashboard({ profile: initProfile, onBack, onSignOut
                       const urgent = r.status==='active' && dl <= 7
                       return (
                         <motion.tr key={r.id} initial={{opacity:0}} animate={{opacity:1}} transition={{delay:i*.04}} className={`${dark?'hover:bg-slate-800/30':'hover:bg-gray-50'} transition-colors`}>
-                          <td className="px-5 py-4"><p className={`${txt} text-sm font-medium`}>{r.profiles?.full_name??'—'}</p><p className={`${sub} text-xs`}>{r.profiles?.phone??''}</p></td>
+                          <td className="px-5 py-4"><p className={`${txt} text-sm font-medium`}>{r.profiles?.full_name??'—'}</p><p className={`${sub} text-xs`}>{r.profiles?.phone??'—'}</p></td>
                           <td className={`px-5 py-4 ${sub} text-sm`}>{r.rooms?.room_number??'—'}</td>
                           <td className={`px-5 py-4 ${sub} text-sm`}>{fmtDate(r.start_date)}</td>
                           <td className="px-5 py-4"><p className={`text-sm ${urgent?'text-amber-400':sub}`}>{fmtDate(r.expiry_date)}</p></td>
@@ -450,11 +464,14 @@ export default function AdminDashboard({ profile: initProfile, onBack, onSignOut
                               {r.status==='active'?'Aktif':r.status==='pending_payment'?'Belum Bayar':'Berakhir'}
                             </span>
                           </td>
+                          <td className="px-5 py-4">
+                            <button onClick={()=>kickTenant(r)} className="px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 text-xs font-semibold transition-all">Kick</button>
+                          </td>
                         </motion.tr>
                       )
                     })}
                     {rentals.filter(r=>r.status==='active'||r.status==='pending_payment').length===0&&(
-                      <tr><td colSpan={6} className={`px-5 py-12 text-center ${sub} text-sm`}>Belum ada data penyewa</td></tr>
+                      <tr><td colSpan={7} className={`px-5 py-12 text-center ${sub} text-sm`}>Belum ada data penyewa</td></tr>
                     )}
                   </tbody>
                 </table>
